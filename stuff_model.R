@@ -21,9 +21,9 @@ df2 <- df %>%
   filter(Level == "D1") %>%
   mutate(cleanOutcome = case_when(PitchCall %in% ball_events ~ "Ball",
                                   PitchCall %in% strike_call_events ~ "CalledStrike",
-                                  PitchCall %in% strike_sw_events ~ "SwingingStrike",
-                                  PitchCall %in% foul_events ~ "FoulBall",
-                                  PitchCall %in% ip_events ~ AutoHitType),
+                                  PitchCall %in% strike_sw_events ~ "Swing",
+                                  PitchCall %in% foul_events ~ "Swing",
+                                  PitchCall %in% ip_events ~ "Swing"),
          isSwing = if_else(cleanOutcome %in% c("Ball", "CalledStrike"), 1, 0))
 
 unique(df2$cleanOutcome)
@@ -42,6 +42,7 @@ train_test_by_type <- function(df, pitch_type_vector){
   
   df_by_type <- df %>%
     filter(AutoPitchType %in% pitch_type_vector) %>%
+    # select(cleanOutcome,PlateLocHeight,PlateLocSide) %>%
     select(cleanOutcome,RelSpeed,InducedVertBreak,HorzBreak,RelSide,RelHeight,SpinRate,Extension) %>%
     drop_na()
   
@@ -79,8 +80,9 @@ test_pool <- catboost.load_pool(data = test[, -1],
 params <- list(
   loss_function = 'MultiClass',
   eval_metric = 'AUC',
-  class_weights = summary_df$weight,
+  class_weights = c(5,2,5),
   iterations = 1000,
+  bootstrap_type = "Bernoulli",
   learning_rate = 0.1,
   depth = 6,
   random_seed = 134,
