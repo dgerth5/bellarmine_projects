@@ -21,9 +21,9 @@ df2 <- df %>%
   filter(Level == "D1") %>%
   mutate(cleanOutcome = case_when(PitchCall %in% ball_events ~ "Ball",
                                   PitchCall %in% strike_call_events ~ "CalledStrike",
-                                  PitchCall %in% strike_sw_events ~ "SWING",
-                                  PitchCall %in% foul_events ~ "SWING",
-                                  PitchCall %in% ip_events ~ "SWING"),
+                                  PitchCall %in% strike_sw_events ~ "Whiff",
+                                  PitchCall %in% foul_events ~ "Foul",
+                                  PitchCall %in% ip_events ~ AutoHitType),
          isSwing = if_else(cleanOutcome %in% c("Ball", "CalledStrike"), 1, 0))
 
 unique(df2$cleanOutcome)
@@ -117,3 +117,26 @@ ggplot(bin_predictions, aes(x = PredictedRate, y = ActualRate)) +
   facet_wrap(~ Class) +
   labs(x = "Predicted Rate", y = "Actual Rate") +
   theme_minimal()
+
+library(pROC)
+# Assuming you have your model and test set prepared
+prob_predictions <- catboost.predict(model, test_pool, prediction_type = "Probability")
+
+# Convert the predictions into a data frame
+prob_df <- as.data.frame(prob_predictions)
+
+# Ensure `test$cleanOutcome` is a factor
+test$cleanOutcome <- as.factor(test$cleanOutcome)
+
+# Get the levels of the response
+levels_outcome <- levels(test$cleanOutcome)
+
+# Ensure the column names of `prob_predictions` match these levels
+colnames(prob_predictions) <- levels_outcome
+
+# Now, you can run the multiclass ROC
+multiclass_roc <- multiclass.roc(test$cleanOutcome, prob_predictions)
+
+# To obtain the AUC for each class
+auc(multiclass_roc)
+
