@@ -21,9 +21,9 @@ df2 <- df %>%
   filter(Level == "D1") %>%
   mutate(cleanOutcome = case_when(PitchCall %in% ball_events ~ "Ball",
                                   PitchCall %in% strike_call_events ~ "CalledStrike",
-                                  PitchCall %in% strike_sw_events ~ "Swing",
-                                  PitchCall %in% foul_events ~ "Swing",
-                                  PitchCall %in% ip_events ~ "Swing"),
+                                  PitchCall %in% strike_sw_events ~ "SWING",
+                                  PitchCall %in% foul_events ~ "SWING",
+                                  PitchCall %in% ip_events ~ "SWING"),
          isSwing = if_else(cleanOutcome %in% c("Ball", "CalledStrike"), 1, 0))
 
 unique(df2$cleanOutcome)
@@ -43,8 +43,10 @@ train_test_by_type <- function(df, pitch_type_vector){
   df_by_type <- df %>%
     filter(AutoPitchType %in% pitch_type_vector) %>%
     # select(cleanOutcome,PlateLocHeight,PlateLocSide) %>%
-    select(cleanOutcome,RelSpeed,InducedVertBreak,HorzBreak,RelSide,RelHeight,SpinRate,Extension) %>%
+    select(cleanOutcome,RelSpeed,InducedVertBreak,HorzBreak,RelSide,RelHeight,SpinRate,Extension,PitcherThrows) %>%
     drop_na()
+  
+  df_by_type$PitcherThrows <- as.factor(df_by_type$PitcherThrows)
   
   id <- sample(1:nrow(df_by_type), round(0.75*nrow(df_by_type)))
   
@@ -62,7 +64,7 @@ ff_df <- train_test_by_type(df2, bb_type)
 train <- as.data.frame(ff_df[[1]])
 test <- as.data.frame(ff_df[[2]])
 
-summary_df <- as.data.frame(train) %>%
+summary_df <- as.data.frame(test) %>%
   group_by(cleanOutcome) %>%
   summarise(n = n()) %>%
   ungroup() %>%
@@ -80,9 +82,7 @@ test_pool <- catboost.load_pool(data = test[, -1],
 params <- list(
   loss_function = 'MultiClass',
   eval_metric = 'AUC',
-  class_weights = c(5,2,5),
   iterations = 1000,
-  bootstrap_type = "Bernoulli",
   learning_rate = 0.1,
   depth = 6,
   random_seed = 134,
@@ -96,3 +96,24 @@ MLmetrics::Accuracy(class_predictions, test$cleanOutcome)
 
 conf_matrix <- table(Predicted = class_predictions, Actual = test$cleanOutcome)
 print(conf_matrix)
+
+library(ggplot2)
+prob_predictions <- catboost.predict(model, test_pool, prediction_type = "Probability")
+prob_df <- as.data.frame(prob_predictions)
+names(prob_df) <- levels(as.factor(test$cleanOutcome))
+
+bin_predictions <- prob_df %>%
+  mutate(Actual = test$cleanOutcome) %>%
+  gather(key = "Class", value = "PredictedRate", -Actual) %>%
+  group_by(Class) %>%
+  mutate(Bin = ntile(PredictedRate, 5)) %>%
+  group_by(Class, Bin) %>%
+  summarise(PredictedRate = mean(PredictedRate),
+            ActualRate = mean(Actual == as.numeric(Class)))
+ggplot(bin_predictions, aes(x = PredictedRate, y = ActualRate)) +
+  geom_point(color = "red") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  xlim(c(0,1)) + ylim(c(0,1))+
+  facet_wrap(~ Class) +
+  labs(x = "Predicted Rate", y = "Actual Rate") +
+  theme_minimal()
