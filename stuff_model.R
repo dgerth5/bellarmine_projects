@@ -43,10 +43,10 @@ train_test_by_type <- function(df, pitch_type_vector){
   df_by_type <- df %>%
     filter(AutoPitchType %in% pitch_type_vector) %>%
     # select(cleanOutcome,PlateLocHeight,PlateLocSide) %>%
-    select(cleanOutcome,RelSpeed,InducedVertBreak,HorzBreak,RelSide,RelHeight,SpinRate,Extension,PitcherThrows) %>%
+    select(cleanOutcome,PlateLocHeight,PlateLocSide,RelSpeed,InducedVertBreak,HorzBreak,RelSide,RelHeight,SpinRate,Extension) %>%
     drop_na()
   
-  df_by_type$PitcherThrows <- as.factor(df_by_type$PitcherThrows)
+  #df_by_type$PitcherThrows <- as.factor(df_by_type$PitcherThrows)
   
   id <- sample(1:nrow(df_by_type), round(0.75*nrow(df_by_type)))
   
@@ -82,7 +82,7 @@ test_pool <- catboost.load_pool(data = test[, -1],
 params <- list(
   loss_function = 'MultiClass',
   eval_metric = 'AUC',
-  iterations = 1000,
+  iterations = 500,
   learning_rate = 0.1,
   depth = 6,
   random_seed = 134,
@@ -106,7 +106,7 @@ bin_predictions <- prob_df %>%
   mutate(Actual = test$cleanOutcome) %>%
   gather(key = "Class", value = "PredictedRate", -Actual) %>%
   group_by(Class) %>%
-  mutate(Bin = ntile(PredictedRate, 5)) %>%
+  mutate(Bin = ntile(PredictedRate, 50)) %>%
   group_by(Class, Bin) %>%
   summarise(PredictedRate = mean(PredictedRate),
             ActualRate = mean(Actual == as.numeric(Class)))
@@ -119,24 +119,10 @@ ggplot(bin_predictions, aes(x = PredictedRate, y = ActualRate)) +
   theme_minimal()
 
 library(pROC)
-# Assuming you have your model and test set prepared
-prob_predictions <- catboost.predict(model, test_pool, prediction_type = "Probability")
-
-# Convert the predictions into a data frame
-prob_df <- as.data.frame(prob_predictions)
-
-# Ensure `test$cleanOutcome` is a factor
 test$cleanOutcome <- as.factor(test$cleanOutcome)
-
-# Get the levels of the response
 levels_outcome <- levels(test$cleanOutcome)
-
-# Ensure the column names of `prob_predictions` match these levels
 colnames(prob_predictions) <- levels_outcome
 
-# Now, you can run the multiclass ROC
 multiclass_roc <- multiclass.roc(test$cleanOutcome, prob_predictions)
-
-# To obtain the AUC for each class
 auc(multiclass_roc)
 
