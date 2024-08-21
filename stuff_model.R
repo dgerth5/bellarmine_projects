@@ -2,11 +2,12 @@ library(data.table)
 library(tidyverse)
 library(MLmetrics)
 library(catboost)
-library(ParBayesianOptimization)
+library(ggplot2)
+library(pROC)
 
 df <- fread("C:/Users/david/Downloads/TM_2024_reg_szn (1).csv")
 
-unique(df$Level)
+unique(df$BatterSide)
 
 upc <- sort(unique(df$PitchCall))
 ball_events <- c(upc[2],upc[3])
@@ -42,11 +43,12 @@ train_test_by_type <- function(df, pitch_type_vector){
   
   df_by_type <- df %>%
     filter(AutoPitchType %in% pitch_type_vector) %>%
+    mutate(sameHand = if_else(PitcherThrows == BatterSide, 1, 0)) %>%
     # select(cleanOutcome,PlateLocHeight,PlateLocSide) %>%
-    select(cleanOutcome,PlateLocHeight,PlateLocSide,RelSpeed,InducedVertBreak,HorzBreak,RelSide,RelHeight,SpinRate,Extension) %>%
+    select(cleanOutcome,PlateLocHeight,PlateLocSide,RelSpeed,InducedVertBreak,HorzBreak,RelSide,RelHeight,SpinRate,Extension,sameHand) %>%
     drop_na()
   
-  #df_by_type$PitcherThrows <- as.factor(df_by_type$PitcherThrows)
+  df_by_type$PitcherThrows <- as.factor(df_by_type$sameHand)
   
   id <- sample(1:nrow(df_by_type), round(0.75*nrow(df_by_type)))
   
@@ -59,30 +61,24 @@ train_test_by_type <- function(df, pitch_type_vector){
   
 }
 
-ff_df <- train_test_by_type(df2, bb_type)
+ff_df <- train_test_by_type(df2, ff_type)
 
 train <- as.data.frame(ff_df[[1]])
 test <- as.data.frame(ff_df[[2]])
 
-summary_df <- as.data.frame(test) %>%
-  group_by(cleanOutcome) %>%
-  summarise(n = n()) %>%
-  ungroup() %>%
-  mutate(n2 = n / sum(n),
-         weight = 1/n2)
-
-train$cleanOutcome <- as.integer(as.factor(train$cleanOutcome)) - 1
-test$cleanOutcome <- as.integer(as.factor(test$cleanOutcome)) - 1
+# 
+# train$cleanOutcome <- as.integer(as.factor(train$cleanOutcome)) - 1
+# test$cleanOutcome <- as.integer(as.factor(test$cleanOutcome)) - 1
 
 train_pool <- catboost.load_pool(data = train[, -1],
-                                 label = train$cleanOutcome)
+                                 label = as.integer(as.factor(train$cleanOutcome)) - 1)
 test_pool <- catboost.load_pool(data = test[, -1],
-                                label = test$cleanOutcome)
+                                label = as.integer(as.factor(test$cleanOutcome)) - 1)
 
 params <- list(
   loss_function = 'MultiClass',
   eval_metric = 'AUC',
-  iterations = 500,
+  iterations = 1000,
   learning_rate = 0.1,
   depth = 6,
   random_seed = 134,
@@ -92,12 +88,11 @@ params <- list(
 model <- catboost.train(train_pool, params = params)
 
 class_predictions <- catboost.predict(model, test_pool, prediction_type = "Class")
-MLmetrics::Accuracy(class_predictions, test$cleanOutcome)
+MLmetrics::Accuracy(class_predictions, as.integer(as.factor(test$cleanOutcome)) - 1)
 
-conf_matrix <- table(Predicted = class_predictions, Actual = test$cleanOutcome)
+conf_matrix <- table(Predicted = class_predictions, Actual = as.integer(as.factor(test$cleanOutcome)) - 1)
 print(conf_matrix)
 
-library(ggplot2)
 prob_predictions <- catboost.predict(model, test_pool, prediction_type = "Probability")
 prob_df <- as.data.frame(prob_predictions)
 names(prob_df) <- levels(as.factor(test$cleanOutcome))
@@ -109,7 +104,7 @@ bin_predictions <- prob_df %>%
   mutate(Bin = ntile(PredictedRate, 50)) %>%
   group_by(Class, Bin) %>%
   summarise(PredictedRate = mean(PredictedRate),
-            ActualRate = mean(Actual == as.numeric(Class)))
+            ActualRate = mean(Actual == Class))
 ggplot(bin_predictions, aes(x = PredictedRate, y = ActualRate)) +
   geom_point(color = "red") +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
@@ -118,7 +113,6 @@ ggplot(bin_predictions, aes(x = PredictedRate, y = ActualRate)) +
   labs(x = "Predicted Rate", y = "Actual Rate") +
   theme_minimal()
 
-library(pROC)
 test$cleanOutcome <- as.factor(test$cleanOutcome)
 levels_outcome <- levels(test$cleanOutcome)
 colnames(prob_predictions) <- levels_outcome
