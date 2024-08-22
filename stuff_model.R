@@ -76,42 +76,20 @@ test_pool <- catboost.load_pool(data = test[, -1],
                                 label = as.integer(as.factor(test$cleanOutcome)) - 1)
 
 params <- list(
-  loss_function = 'MultiClass',
+  loss_function = 'MultiClassOneVsAll',
   eval_metric = 'AUC',
   iterations = 1000,
   learning_rate = 0.1,
   depth = 6,
   random_seed = 134,
-  verbose = 100
+  verbose = 250
 )
 
 model <- catboost.train(train_pool, params = params)
 
-class_predictions <- catboost.predict(model, test_pool, prediction_type = "Class")
-MLmetrics::Accuracy(class_predictions, as.integer(as.factor(test$cleanOutcome)) - 1)
-
-conf_matrix <- table(Predicted = class_predictions, Actual = as.integer(as.factor(test$cleanOutcome)) - 1)
-print(conf_matrix)
-
 prob_predictions <- catboost.predict(model, test_pool, prediction_type = "Probability")
 prob_df <- as.data.frame(prob_predictions)
 names(prob_df) <- levels(as.factor(test$cleanOutcome))
-
-bin_predictions <- prob_df %>%
-  mutate(Actual = test$cleanOutcome) %>%
-  gather(key = "Class", value = "PredictedRate", -Actual) %>%
-  group_by(Class) %>%
-  mutate(Bin = ntile(PredictedRate, 50)) %>%
-  group_by(Class, Bin) %>%
-  summarise(PredictedRate = mean(PredictedRate),
-            ActualRate = mean(Actual == Class))
-ggplot(bin_predictions, aes(x = PredictedRate, y = ActualRate)) +
-  geom_point(color = "red") +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  xlim(c(0,1)) + ylim(c(0,1))+
-  facet_wrap(~ Class) +
-  labs(x = "Predicted Rate", y = "Actual Rate") +
-  theme_minimal()
 
 test$cleanOutcome <- as.factor(test$cleanOutcome)
 levels_outcome <- levels(test$cleanOutcome)
@@ -119,4 +97,100 @@ colnames(prob_predictions) <- levels_outcome
 
 multiclass_roc <- multiclass.roc(test$cleanOutcome, prob_predictions)
 auc(multiclass_roc)
+
+
+
+
+
+model_fn <- function(df, pitch_type_vector){
+  
+  set.seed(134)
+  
+  df_by_type <- df %>%
+    filter(AutoPitchType %in% pitch_type_vector) %>%
+    mutate(sameHand = if_else(PitcherThrows == BatterSide, 1, 0)) %>%
+    # select(cleanOutcome,PlateLocHeight,PlateLocSide) %>%
+    select(cleanOutcome,PlateLocHeight,PlateLocSide,RelSpeed,InducedVertBreak,HorzBreak,RelSide,RelHeight,SpinRate,Extension,sameHand) %>%
+    drop_na()
+  
+  df_by_type$sameHand <- as.factor(df_by_type$sameHand)
+  
+  id <- sample(1:nrow(df_by_type), round(0.75*nrow(df_by_type)))
+  
+  train <- df_by_type[id, ]
+  test <- df_by_type[-id, ]
+  
+  train_pool <- catboost.load_pool(data = train[, -1],
+                                   label = as.integer(as.factor(train$cleanOutcome)) - 1)
+  test_pool <- catboost.load_pool(data = test[, -1],
+                                  label = as.integer(as.factor(test$cleanOutcome)) - 1)
+  
+  params <- list(
+    loss_function = 'MultiClassOneVsAll',
+    eval_metric = 'AUC',
+    iterations = 1000,
+    random_seed = 134,
+    verbose = 250
+  )
+  
+  model <- catboost.train(train_pool, params = params)
+  
+  return(model)
+}
+
+ff_model <- model_fn(df2, ff_type)
+bb_model <- model_fn(df2, bb_type)
+ch_model <- model_fn(df2, ch_type)
+
+mod3_df <- df2 %>%
+  filter(AutoPitchType %in% ff_type) %>%
+  mutate(sameHand = if_else(PitcherThrows == BatterSide, 1, 0)) %>%
+  # select(cleanOutcome,PlateLocHeight,PlateLocSide) %>%
+  select(cleanOutcome,PlateLocHeight,PlateLocSide,RelSpeed,InducedVertBreak,HorzBreak,RelSide,RelHeight,SpinRate,Extension,sameHand) %>%
+  drop_na()
+
+mod3_df$PitcherThrows <- as.factor(mod3_df$sameHand)
+
+
+full_pool <- catboost.load_pool(data = mod3_df[, -1],
+                                label = as.integer(as.factor(mod3_df$cleanOutcome)) - 1)
+
+p <- catboost.predict(ff_model, full_pool, prediction_type = "Probability")
+prob_df <- as.data.frame(p)
+names(prob_df) <- levels(as.factor(mod3_df$cleanOutcome))
+
+# 
+# class_predictions <- catboost.predict(model, test_pool, prediction_type = "Class")
+# MLmetrics::Accuracy(class_predictions, as.integer(as.factor(test$cleanOutcome)) - 1)
+# 
+# conf_matrix <- table(Predicted = class_predictions, Actual = as.integer(as.factor(test$cleanOutcome)) - 1)
+# print(conf_matrix)
+# 
+# prob_predictions <- catboost.predict(model, test_pool, prediction_type = "Probability")
+# prob_df <- as.data.frame(prob_predictions)
+# names(prob_df) <- levels(as.factor(test$cleanOutcome))
+# 
+# bin_predictions <- prob_df %>%
+#   mutate(Actual = test$cleanOutcome) %>%
+#   gather(key = "Class", value = "PredictedRate", -Actual) %>%
+#   group_by(Class) %>%
+#   mutate(Bin = ntile(PredictedRate, 50)) %>%
+#   group_by(Class, Bin) %>%
+#   summarise(PredictedRate = mean(PredictedRate),
+#             ActualRate = mean(Actual == Class))
+# ggplot(bin_predictions, aes(x = PredictedRate, y = ActualRate)) +
+#   geom_point(color = "red") +
+#   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+#   xlim(c(0,1)) + ylim(c(0,1))+
+#   facet_wrap(~ Class) +
+#   labs(x = "Predicted Rate", y = "Actual Rate") +
+#   theme_minimal()
+# 
+# test$cleanOutcome <- as.factor(test$cleanOutcome)
+# levels_outcome <- levels(test$cleanOutcome)
+# colnames(prob_predictions) <- levels_outcome
+# 
+# multiclass_roc <- multiclass.roc(test$cleanOutcome, prob_predictions)
+# auc(multiclass_roc)
+# 
 
