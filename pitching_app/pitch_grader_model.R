@@ -68,3 +68,5 @@ model_fn <- function(df, pitch_type_vector){
 ff_model <- model_fn(df2, ff_type)
 bb_model <- model_fn(df2, bb_type)
 ch_model <- model_fn(df2, ch_type)
+
+saveRDS(list(ff_model = ff_model, bb_model = bb_model, ch_model = ch_model), "pitch_models.RDS")

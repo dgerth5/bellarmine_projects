@@ -48,7 +48,6 @@ rel_pt <- df1 %>%
             ext_mean = mean(ext),
             ext_sd = sd(ext))
 
-
 pitch_dat <- df1 %>%
   filter(PitcherThrows != "Both") %>%
   group_by(PitcherThrows, AutoPitchType) %>%
@@ -58,3 +57,15 @@ pitch_dat <- df1 %>%
             h_break_sd = sd(h_break),
             v_break_mean = mean(v_break),
             v_break_sd = sd(v_break))
+
+norm_df <- df1 %>%
+  left_join(rel_pt, by = "PitcherThrows") %>%
+  left_join(pitch_dat, by = c("PitcherThrows", "AutoPitchType")) %>%
+  mutate(n_hrp = (h_rel - h_rel_mean) / h_rel_sd,
+         n_vrp = (v_rel - v_rel_mean) / v_rel_sd,
+         n_ext = (ext - ext_mean) / ext_sd,
+         n_velo = (velo - velo_mean) / velo_sd,
+         n_hb = (h_break - h_break_mean) / h_break_sd,
+         n_vb = (v_break - v_break_mean) / v_break_sd)
+
+saveRDS(list(rel_pt = rel_pt, pitch_dat = pitch_dat, norm_df = norm_df), "similarity_data.RDS")
