@@ -115,7 +115,7 @@ ch_df$score <- ch_preds %*% rvs
 
 pitch_score_df <- bind_rows(ff_df, bb_df, ch_df) %>%
   group_by(Pitcher, AutoPitchType) %>%
-  summarise(pitch_score = 100 + (round(mean(score),3) / .027 * 10),
+  summarise(pitch_score = 100 + (round(mean(score),3) / .027 * -10),
             n = n()) %>%
   filter(n > 30)
 
