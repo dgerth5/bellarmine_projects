@@ -31,9 +31,7 @@ ch_type <- c(apt[1], apt[8])
 
 
 model_fn <- function(df, pitch_type_vector){
-  
-  set.seed(134)
-  
+
   df_by_type <- df %>%
     filter(AutoPitchType %in% pitch_type_vector) %>%
     mutate(sameHand = if_else(PitcherThrows == BatterSide, 1, 0)) %>%
@@ -42,15 +40,8 @@ model_fn <- function(df, pitch_type_vector){
   
   df_by_type$sameHand <- as.factor(df_by_type$sameHand)
   
-  id <- sample(1:nrow(df_by_type), round(0.75*nrow(df_by_type)))
-  
-  train <- df_by_type[id, ]
-  test <- df_by_type[-id, ]
-  
-  train_pool <- catboost.load_pool(data = train[, -1],
-                                   label = as.integer(as.factor(train$cleanOutcome)) - 1)
-  test_pool <- catboost.load_pool(data = test[, -1],
-                                  label = as.integer(as.factor(test$cleanOutcome)) - 1)
+  mod_pool <- catboost.load_pool(data = df_by_type[, -1],
+                                 label = as.integer(as.factor(df_by_type$cleanOutcome)) - 1)
   
   params <- list(
     loss_function = 'MultiClassOneVsAll',
@@ -60,7 +51,7 @@ model_fn <- function(df, pitch_type_vector){
     verbose = 250
   )
   
-  model <- catboost.train(train_pool, params = params)
+  model <- catboost.train(mod_pool, params = params)
   
   return(model)
 }
@@ -69,9 +60,7 @@ ff_stuff_model <- model_fn(df2, ff_type)
 bb_stuff_model <- model_fn(df2, bb_type)
 ch_stuff_model <- model_fn(df2, ch_type)
 
-model_fn <- function(df, pitch_type_vector){
-  
-  set.seed(134)
+p_model_fn <- function(df, pitch_type_vector){
   
   df_by_type <- df %>%
     filter(AutoPitchType %in% pitch_type_vector) %>%
@@ -81,15 +70,8 @@ model_fn <- function(df, pitch_type_vector){
   
   df_by_type$sameHand <- as.factor(df_by_type$sameHand)
   
-  id <- sample(1:nrow(df_by_type), round(0.75*nrow(df_by_type)))
-  
-  train <- df_by_type[id, ]
-  test <- df_by_type[-id, ]
-  
-  train_pool <- catboost.load_pool(data = train[, -1],
-                                   label = as.integer(as.factor(train$cleanOutcome)) - 1)
-  test_pool <- catboost.load_pool(data = test[, -1],
-                                  label = as.integer(as.factor(test$cleanOutcome)) - 1)
+  mod_pool <- catboost.load_pool(data = df_by_type[, -1],
+                                   label = as.integer(as.factor(df_by_type$cleanOutcome)) - 1)
   
   params <- list(
     loss_function = 'MultiClassOneVsAll',
@@ -99,14 +81,14 @@ model_fn <- function(df, pitch_type_vector){
     verbose = 250
   )
   
-  model <- catboost.train(train_pool, params = params)
+  model <- catboost.train(mod_pool, params = params)
   
   return(model)
 }
 
-ff_pitching_model <- model_fn(df2, ff_type)
-bb_pitching_model <- model_fn(df2, bb_type)
-ch_pitching_model <- model_fn(df2, ch_type)
+ff_pitching_model <- p_model_fn(df2, ff_type)
+bb_pitching_model <- p_model_fn(df2, bb_type)
+ch_pitching_model <- p_model_fn(df2, ch_type)
 
 saveRDS(list(ff_stuff_model = ff_stuff_model, bb_stuff_model = bb_stuff_model, ch_stuff_model = ch_stuff_model,
              ff_pitching_model = ff_pitching_model, bb_pitching_model = bb_pitching_model, ch_pitching_model = ch_pitching_model), "pitch_models.RDS")
