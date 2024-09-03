@@ -90,5 +90,11 @@ ff_pitching_model <- p_model_fn(df2, ff_type)
 bb_pitching_model <- p_model_fn(df2, bb_type)
 ch_pitching_model <- p_model_fn(df2, ch_type)
 
+c(ff_type, bb_type, ch_type)
+
+summary(df2$PlateLocHeight)
+summary(df2$PlateLocSide)
+
+
 saveRDS(list(ff_stuff_model = ff_stuff_model, bb_stuff_model = bb_stuff_model, ch_stuff_model = ch_stuff_model,
              ff_pitching_model = ff_pitching_model, bb_pitching_model = bb_pitching_model, ch_pitching_model = ch_pitching_model), "pitch_models.RDS")
