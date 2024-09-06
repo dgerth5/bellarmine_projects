@@ -1,116 +1,179 @@
-# Load necessary libraries
+# library(shiny)
+# library(gt)
+# library(readr)
+# library(dplyr)
+# 
+# df_smry <- read_csv("pitcher_df_smry.csv")
+# df_tot <- read_csv("pitcher_df_tot.csv")
+# 
+# pitcher_names <- sort(unique(df_smry$Pitcher))
+# 
+# ui <- fluidPage(
+#   titlePanel("Pitcher Search"),
+#   
+#   sidebarLayout(
+#     sidebarPanel(
+#       selectizeInput("pitcher_name", 
+#                      "Select Pitcher's Name:",
+#                      choices = NULL,  # Initialize with no choices
+#                      options = list(maxOptions = 1000)  # Limit options shown
+#       ),
+#       
+#       hr()  # Horizontal bar separating input from the table
+#     ),
+#     
+#     mainPanel(
+#       gt_output("pitcher_table")
+#     )
+#   )
+# )
+# 
+# server <- function(input, output, session) {
+#   
+#   updateSelectizeInput(session, "pitcher_name", choices = pitcher_names, server = TRUE)
+#   
+#   filtered_data <- reactive({
+#     if (is.null(input$pitcher_name) || input$pitcher_name == "") {
+#       return(NULL)
+#     } else {
+#       df_smry %>% filter(Pitcher == input$pitcher_name) %>% select(-Pitcher)
+#     }
+#   })
+#   
+#   output$pitcher_table <- render_gt({
+#     if (is.null(filtered_data())) {
+#       return(NULL)
+#     } else {
+#       filtered_data() %>%
+#         gt() %>%
+#         tab_header(title = md("**Pitcher Trackman Summary 2024**")) %>%
+#         cols_label(AutoPitchType = "Pitch Type",
+#                    pitches_thrown = "Count",
+#                    velo = "Velo",
+#                    x_rel = "HRel",
+#                    z_rel = "VRel",
+#                    hmov = "HMov",
+#                    vmov = "IVB",
+#                    spinrate = "SpinRate",
+#                    ext = "Extension",
+#                    vaa = "VAA",
+#                    haa = "HAA")
+# #     }
+#   })
+# }
+# 
+# shinyApp(ui = ui, server = server)
+
+
 library(shiny)
+library(gt)
+library(readr)
+library(dplyr)
 library(ggplot2)
-library(catboost)
+library(gridExtra)
 
-# Load the saved models
-models <- readRDS("pitch_models.RDS")
-ff_pitching_model <- models$ff_pitching_model
-bb_pitching_model <- models$bb_pitching_model
-ch_pitching_model <- models$ch_pitching_model
+# Load data from CSV
+df_smry <- read_csv("pitcher_df_smry.csv")
+df_tot <- read_csv("pitcher_df_tot.csv")
 
-# Define UI
+# Extract unique pitcher names for the dropdown
+pitcher_names <- unique(df_smry$Pitcher)
+
+# Define the Shiny UI
 ui <- fluidPage(
-  titlePanel("Pitch Grader App"),
+  titlePanel("Pitcher Search"),
   
-  # Organize inputs in two horizontal lines
-  fluidRow(
-    column(4,
-           selectInput("pitch_type", "Pitch Type", choices = c("Four-Seam", "Sinker", "Curveball", "Cutter", "Slider", "Changeup", "Splitter"))
+  sidebarLayout(
+    sidebarPanel(
+      selectizeInput("pitcher_name", 
+                     "Select Pitcher's Name:",
+                     choices = NULL,  # Initialize with no choices
+                     options = list(maxOptions = 1000)  # Limit options shown
+      ),
+      
+      hr()  # Horizontal bar separating input from the table
     ),
-    column(4,
-           selectInput("batter_hand", "Batter Hand", choices = c("R", "L"))
-    ),
-    column(4,
-           selectInput("pitcher_hand", "Pitcher Hand", choices = c("R", "L"))
+    
+    mainPanel(
+      gt_output("pitcher_table"),
+      plotOutput("pitchPlot")  # Output for the combined plots
     )
-  ),
-  
-  fluidRow(
-    column(3,
-           numericInput("RelSpeed", "Speed", value = 90, min = 50, max = 100)
-    ),
-    column(3,
-           numericInput("InducedVertBreak", "IVB", value = 10, min = -20, max = 20)
-    ),
-    column(3,
-           numericInput("HorzBreak", "HB", value = 0, min = -20, max = 20)
-    ),
-    column(3,
-           numericInput("RelSide", "Release Side", value = 0, min = -5, max = 5)
-    ),
-    column(3,
-           numericInput("RelHeight", "Release Height", value = 6, min = 0, max = 10)
-    ),
-    column(3,
-           numericInput("SpinRate", "Spin Rate", value = 2000, min = 0, max = 4000)
-    ),
-    column(3,
-           numericInput("Extension", "Extension", value = 6, min = 0, max = 10)
-    )
-  ),
-  
-  mainPanel(
-    plotOutput("ev_plot")
   )
 )
 
-server <- function(input, output) {
-  # Reactive expression for plot data
-  plot_data <- reactive({
-    # Create base data frame with grid of locations
-    loc <- expand.grid(PlateLocHeight = seq(2, 3, 0.05), PlateLocSide = seq(-.5, .5, 0.05))
-    
-    # Add numeric inputs to data frame
-    loc$RelSpeed <- input$RelSpeed
-    loc$InducedVertBreak <- input$InducedVertBreak
-    loc$HorzBreak <- input$HorzBreak
-    loc$RelSide <- input$RelSide
-    loc$RelHeight <- input$RelHeight
-    loc$SpinRate <- input$SpinRate
-    loc$Extension <- input$Extension
-    
-    # Add sameHand column
-    loc$sameHand <- as.factor(ifelse(input$batter_hand == input$pitcher_hand, 1, 0))
-    
-    # Select appropriate model based on pitch type
-    pitch_model <- switch(input$pitch_type,
-                          "Four-Seam" = ff_pitching_model,
-                          "Sinker" = ff_pitching_model,
-                          "Curveball" = bb_pitching_model,
-                          "Cutter" = bb_pitching_model,
-                          "Slider" = bb_pitching_model,
-                          "Changeup" = ch_pitching_model,
-                          "Splitter" = ch_pitching_model)
-    
-    # Convert data frame to pool for CatBoost prediction
-    data_pool <- catboost.load_pool(data = loc)
-    
-    # Get prediction probabilities
-    probs <- catboost.predict(pitch_model, data_pool, prediction_type = "Probability")
-    
-    # Calculate EV
-    ev_vector <- c(.054, -.061, .103, -.039, -.056, .277, -.225, -.108)
-    loc$RV <- rowSums(probs %*% ev_vector) 
-    loc$Stuff <- 100 + (((loc$RV - 0.004) / 0.007)*-10)
-    
-    return(loc)
+# Define the Shiny server logic
+server <- function(input, output, session) {
+  
+  # Update the selectize input choices dynamically on the server
+  updateSelectizeInput(session, "pitcher_name", choices = pitcher_names, server = TRUE)
+  
+  # Filter data based on user input
+  filtered_data <- reactive({
+    if (is.null(input$pitcher_name) || input$pitcher_name == "") {
+      return(NULL)
+    } else {
+      df_smry %>% filter(Pitcher == input$pitcher_name)
+    }
   })
   
-  output$ev_plot <- renderPlot({
-    loc <- plot_data()
+  # Render the GT table
+  output$pitcher_table <- render_gt({
+    if (is.null(filtered_data())) {
+      return(NULL)
+    } else {
+      filtered_data() %>%
+        gt() %>%
+        tab_header(title = md("**Pitcher Trackman Summary 2024**")) %>%
+        cols_label(AutoPitchType = "Pitch Type",
+                   pitches_thrown = "Count",
+                   velo = "Velo",
+                   x_rel = "HRel",
+                   z_rel = "VRel",
+                   hmov = "HMov",
+                   vmov = "IVB",
+                   spinrate = "SpinRate",
+                   ext = "Extension",
+                   vaa = "VAA",
+                   haa = "HAA")
+    }
+  })
+  
+  # Filter plot data based on user input
+  filtered_plot_data <- reactive({
+    if (is.null(input$pitcher_name) || input$pitcher_name == "") {
+      return(NULL)
+    } else {
+      df_tot %>% filter(Pitcher == input$pitcher_name)
+    }
+  })
+  
+  # Render the combined plots
+  output$pitchPlot <- renderPlot({
+    data <- filtered_plot_data()
     
-    ggplot(loc, aes(x = PlateLocSide, y = PlateLocHeight)) +
-      geom_tile(aes(fill = Stuff)) +
-      scale_fill_gradient2(low = "blue", mid = "white", high = "red",
-                           midpoint = 100) +
-      labs(title = "Pitch Location Heatmap",
-           x = "Plate Location Side",
-           y = "Plate Location Height") +
-      theme_minimal() +
-      coord_equal()  # This ensures the plot is square
+    if (is.null(data)) {
+      return(NULL)
+    }
+    
+    # Velocity distribution plot
+    velocity_plot <- ggplot(data, aes(x = Velo, fill = Pitch)) +
+      geom_density(alpha = 0.7) +
+      labs(title = "Pitch Velocity Distribution", x = "Velocity (mph)", y = "Density") +
+      theme_minimal()
+    
+    # Horizontal and Vertical Movement Plot
+    movement_plot <- ggplot(data, aes(x = HorzBreak, y = InducedVertBreak, color = Pitch)) +
+      geom_point(size = 3) +
+      labs(title = "Pitch Movement", x = "Horizontal Movement (in)", y = "Vertical Movement (in)") +
+      xlim(c(-30,30)) + ylim(c(-30,30)) +
+      geom_hline(yintercept=0) + geom_vline(xintercept=0)+
+      theme_minimal()
+    
+    # Combine the two plots side by side
+    gridExtra::grid.arrange(velocity_plot, movement_plot, ncol = 2)
   })
 }
 
 # Run the application 
 shinyApp(ui = ui, server = server)
+
