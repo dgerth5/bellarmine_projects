@@ -73,8 +73,11 @@ library(ggplot2)
 library(gridExtra)
 
 # Load data from CSV
-df_smry <- read_csv("pitcher_df_smry.csv")
-df_tot <- read_csv("pitcher_df_tot.csv")
+
+df <- readRDS("final_data.RDS")
+
+df_smry <- df$df_smry
+df_tot <- df$df_tot
 
 # Extract unique pitcher names for the dropdown
 pitcher_names <- unique(df_smry$Pitcher)

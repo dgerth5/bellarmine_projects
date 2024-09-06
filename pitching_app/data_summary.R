@@ -26,6 +26,4 @@ df_tot <- df %>%
   rename("Pitch" = AutoPitchType, "Velo" = RelSpeed) %>%
   drop_na()
 
-write_csv(df_smry, "pitcher_df_smry.csv")
-write_csv(df_tot, "pitcher_df_tot.csv")
- 
+saveRDS(list(df_smry = df_smry, df_tot = df_tot), "final_data.RDS")
