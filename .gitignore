@@ -4,3 +4,10 @@
 .Ruserdata
 catboost_info/
 pitching_app/TM_2024_reg_szn (1).csv
+pitching_app/final_data.RDS
+pitching_app/pitcher_df_smry.csv
+pitching_app/pitcher_df_tot.csv
+pitching_app/rsconnect/
+TM_2024_reg_szn (1).csv
+pitch_models.RDS
+similarity_data.RDS
